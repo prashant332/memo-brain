@@ -1,0 +1,244 @@
+import pool from '../db/pool.js'
+import { decrypt } from '../utils/encryption.js'
+
+// System prompt template
+const SYSTEM_PROMPT = `You are MemoBrain, a personal memory assistant. You help users log daily activities,
+track bills and tasks, and answer questions about what they've done or need to do.
+
+TODAY'S DATE: {{TODAY_DATE}}
+CURRENT MONTH: {{CURRENT_MONTH}}
+
+CURRENT USER CONTEXT:
+{{USER_CONTEXT}}
+
+YOUR JOB:
+1. Understand what the user is saying naturally
+2. Respond in a friendly, concise way (1-3 sentences)
+3. ALWAYS end your response with a JSON action block
+
+INTENT TYPES:
+- "log_done"    → user completed something ("paid bill", "visited bank")
+- "log_pending" → user plans to do something ("going to bank tomorrow")
+- "log_event"   → future event ("birthday on March 5")
+- "query"       → asking a question ("did I pay electricity?")
+- "confirm_done" → user confirmed they're done adding details (said "done", "no thanks", "that's all", etc.)
+- "add_details" → user is providing additional details (amount, notes, etc.)
+- "none"        → casual chat, no action needed
+
+CATEGORIES: bill | task | event | note
+
+ALWAYS end your response with this exact format (raw JSON after the separator):
+===ACTION===
+{
+  "intent": "log_done|log_pending|log_event|query|confirm_done|add_details|none",
+  "activity_title": "Clean title or null",
+  "category": "bill|task|event|note|null",
+  "recurrence": "monthly|weekly|yearly|null",
+  "due_date": "ISO date string or null",
+  "period": "YYYY-MM or null",
+  "metadata": {"key": "value"} or null,
+  "query_type": "current_status|upcoming|history|overdue|null",
+  "ask_followup": true|false,
+  "followup_suggestions": ["suggestion1", "suggestion2"] or null
+}
+
+METADATA - All additional data goes here (including notes):
+- bill: {"amount": number, "payment_method": "string", "reference": "string", "notes": "string"}
+- task: {"priority": "low|medium|high", "duration": "string", "location": "string", "notes": "string"}
+- event: {"location": "string", "participants": ["names"], "time": "string", "notes": "string"}
+- note: {"tags": ["tag1"], "content": "string"}
+
+IMPORTANT BEHAVIOR:
+- After logging something, set "ask_followup": true with RELEVANT suggestions based on category
+  - For bills: suggest amount, payment method
+  - For tasks: suggest priority, location, duration
+  - For events: suggest location, time, participants
+- Use "followup_suggestions" to provide 2-3 relevant options like ["Add amount", "Add payment method", "Done"]
+- If user provides details, extract into "metadata" object with intent "add_details"
+- If user says "done", "no thanks", "that's all", use intent "confirm_done"
+- For bills, detect monthly recurring bills
+- For tasks, extract due dates from natural language
+- When answering queries, USE THE METADATA from context (amounts, locations, etc.) to give accurate answers
+- Keep responses natural and concise (1-2 sentences)`
+
+// Build system prompt with context
+function buildSystemPrompt(userContext) {
+  const today = new Date()
+  const todayDate = today.toISOString().split('T')[0]
+  const currentMonth = today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+
+  return SYSTEM_PROMPT
+    .replace('{{TODAY_DATE}}', todayDate)
+    .replace('{{CURRENT_MONTH}}', currentMonth)
+    .replace('{{USER_CONTEXT}}', JSON.stringify(userContext, null, 2))
+}
+
+// Get user context for AI
+export async function getUserContext(userId) {
+  const currentPeriod = new Date().toISOString().slice(0, 7)
+
+  // Monthly bills with status and metadata (including amount, payment details)
+  const billsResult = await pool.query(
+    `SELECT a.title, a.category, a.recurrence,
+       (SELECT l.status FROM activity_logs l
+        WHERE l.activity_id = a.id AND l.period = $2
+        ORDER BY l.created_at DESC LIMIT 1) as status,
+       (SELECT l.metadata FROM activity_logs l
+        WHERE l.activity_id = a.id AND l.period = $2
+        ORDER BY l.created_at DESC LIMIT 1) as metadata
+     FROM activities a
+     WHERE a.user_id = $1 AND a.recurrence = 'monthly' AND a.is_active = true`,
+    [userId, currentPeriod]
+  )
+
+  // Pending tasks with metadata
+  const tasksResult = await pool.query(
+    `SELECT a.title, a.category, l.due_date, l.status, l.metadata
+     FROM activity_logs l
+     JOIN activities a ON l.activity_id = a.id
+     WHERE l.user_id = $1 AND l.status = 'pending'
+     ORDER BY l.due_date ASC NULLS LAST LIMIT 10`,
+    [userId]
+  )
+
+  // Recent activity logs (last 30 days) for query context
+  const recentResult = await pool.query(
+    `SELECT a.title, a.category, l.status, l.period, l.metadata, l.completed_at, l.created_at
+     FROM activity_logs l
+     JOIN activities a ON l.activity_id = a.id
+     WHERE l.user_id = $1 AND l.created_at > NOW() - INTERVAL '30 days'
+     ORDER BY l.created_at DESC LIMIT 20`,
+    [userId]
+  )
+
+  return {
+    currentPeriod,
+    monthlyBills: billsResult.rows.map(b => ({
+      ...b,
+      status: b.status || 'pending'
+    })),
+    pendingTasks: tasksResult.rows.map(t => ({
+      ...t,
+      due_date: t.due_date ? t.due_date.toISOString() : null
+    })),
+    recentLogs: recentResult.rows.map(r => ({
+      ...r,
+      completed_at: r.completed_at ? r.completed_at.toISOString() : null,
+      created_at: r.created_at ? r.created_at.toISOString() : null
+    }))
+  }
+}
+
+// Get user's AI settings
+export async function getUserAISettings(userId) {
+  const result = await pool.query(
+    'SELECT ai_provider, api_key_enc FROM user_settings WHERE user_id = $1',
+    [userId]
+  )
+
+  if (result.rows.length === 0) {
+    return { provider: null, apiKey: null }
+  }
+
+  const { ai_provider, api_key_enc } = result.rows[0]
+
+  return {
+    provider: ai_provider,
+    apiKey: api_key_enc ? decrypt(api_key_enc) : null
+  }
+}
+
+// Call Claude API
+async function callClaude(apiKey, systemPrompt, messages) {
+  const { default: Anthropic } = await import('@anthropic-ai/sdk')
+  const client = new Anthropic({ apiKey })
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-5-20250929',
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages: messages.map(m => ({
+      role: m.role,
+      content: m.content
+    }))
+  })
+
+  return response.content[0].text
+}
+
+// Call OpenAI API
+async function callOpenAI(apiKey, systemPrompt, messages) {
+  const { default: OpenAI } = await import('openai')
+  const client = new OpenAI({ apiKey })
+
+  const response = await client.chat.completions.create({
+    model: 'gpt-4o',
+    max_tokens: 1024,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      ...messages.map(m => ({
+        role: m.role,
+        content: m.content
+      }))
+    ]
+  })
+
+  return response.choices[0].message.content
+}
+
+// Main AI call function
+export async function callAI(userId, messages) {
+  // Get user's AI settings
+  const { provider, apiKey } = await getUserAISettings(userId)
+
+  if (!apiKey) {
+    throw new Error('No API key configured. Please add your API key in Settings.')
+  }
+
+  // Get user context
+  const userContext = await getUserContext(userId)
+
+  // Build system prompt
+  const systemPrompt = buildSystemPrompt(userContext)
+
+  // Call appropriate AI provider
+  let rawResponse
+  if (provider === 'openai') {
+    rawResponse = await callOpenAI(apiKey, systemPrompt, messages)
+  } else {
+    // Default to Claude
+    rawResponse = await callClaude(apiKey, systemPrompt, messages)
+  }
+
+  return rawResponse
+}
+
+// Parse AI response into message and action
+export function parseAIResponse(rawContent) {
+  const separator = '===ACTION==='
+  const parts = rawContent.split(separator)
+
+  const message = parts[0].trim()
+  let action = null
+
+  if (parts[1]) {
+    try {
+      // Clean up the JSON (remove markdown code blocks if present)
+      let jsonStr = parts[1].trim()
+      if (jsonStr.startsWith('```json')) {
+        jsonStr = jsonStr.slice(7)
+      }
+      if (jsonStr.startsWith('```')) {
+        jsonStr = jsonStr.slice(3)
+      }
+      if (jsonStr.endsWith('```')) {
+        jsonStr = jsonStr.slice(0, -3)
+      }
+      action = JSON.parse(jsonStr.trim())
+    } catch (e) {
+      console.warn('Failed to parse action JSON:', e.message)
+    }
+  }
+
+  return { message, action }
+}

@@ -1,0 +1,9 @@
+.env
+node_modules/
+.claude
+backend/node_modules/
+backend/.env
+frontend/node_modules/
+frontend/.env
+dist/
+build/
