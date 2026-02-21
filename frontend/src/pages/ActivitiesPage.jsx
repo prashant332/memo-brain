@@ -83,7 +83,15 @@ export default function ActivitiesPage() {
     setLogs([])
     setLogsOffset(0)
     loadLogs(activity.id, 0)
+    setMobileView('detail')
   }
+
+  const handleBackToList = () => {
+    setMobileView('list')
+    setSelectedActivity(null)
+  }
+
+  const [mobileView, setMobileView] = useState('list') // 'list' | 'detail'
 
   const handleDeactivate = async (activityId) => {
     if (!confirm('Deactivate this activity? It will no longer appear in the dashboard.')) return
@@ -91,6 +99,7 @@ export default function ActivitiesPage() {
       await api.delete(`/activities/${activityId}`)
       toast.success('Activity deactivated')
       setSelectedActivity(null)
+      setMobileView('list')
       loadActivities()
       window.__reloadDashboard?.()
     } catch (err) {
@@ -147,7 +156,7 @@ export default function ActivitiesPage() {
                 onChange={e => setShowInactive(e.target.checked)}
                 className="rounded border-slate-600"
               />
-              Show inactive
+              <span className="hidden sm:inline">Show inactive</span>
             </label>
             <button
               onClick={() => setShowAddModal(true)}
@@ -156,7 +165,7 @@ export default function ActivitiesPage() {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              Add Activity
+              <span className="hidden sm:inline">Add Activity</span>
             </button>
           </div>
         </div>
@@ -164,8 +173,8 @@ export default function ActivitiesPage() {
 
       <div className="max-w-6xl mx-auto px-4 py-6">
         <div className="flex gap-6 h-[calc(100vh-120px)]">
-          {/* Left panel — list */}
-          <div className="w-80 flex-shrink-0 flex flex-col gap-3">
+          {/* Left panel — list (hidden on mobile when detail is open) */}
+          <div className={`flex-shrink-0 flex flex-col gap-3 w-full md:w-80 ${mobileView === 'detail' ? 'hidden md:flex' : 'flex'}`}>
             {/* Filter tabs */}
             <div className="flex gap-1 bg-slate-800/50 p-1 rounded-lg">
               {FILTER_TABS.map(tab => (
@@ -206,15 +215,25 @@ export default function ActivitiesPage() {
             </div>
           </div>
 
-          {/* Right panel — detail */}
-          <div className="flex-1 overflow-hidden">
+          {/* Right panel — detail (hidden on mobile when list is shown) */}
+          <div className={`flex-1 overflow-hidden ${mobileView === 'list' ? 'hidden md:block' : 'block'}`}>
             {selectedActivity ? (
               <div className="h-full flex flex-col card p-0 overflow-hidden">
                 {/* Activity detail header */}
                 <div className="p-5 border-b border-slate-800">
                   <div className="flex items-start justify-between">
-                    <div>
-                      <h2 className="text-lg font-semibold">{selectedActivity.title}</h2>
+                    <div className="flex items-start gap-3 min-w-0">
+                      {/* Back button — mobile only */}
+                      <button
+                        onClick={handleBackToList}
+                        className="md:hidden mt-0.5 p-1 -ml-1 hover:bg-slate-800 rounded-lg transition-colors flex-shrink-0"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                      </button>
+                      <div className="min-w-0">
+                      <h2 className="text-lg font-semibold truncate">{selectedActivity.title}</h2>
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         <CategoryBadge category={selectedActivity.category} />
                         {selectedActivity.recurrence && (
@@ -224,8 +243,9 @@ export default function ActivitiesPage() {
                           </span>
                         )}
                       </div>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-shrink-0">
                       <button
                         onClick={() => {
                           setEditingActivity({ ...selectedActivity })
@@ -246,6 +266,7 @@ export default function ActivitiesPage() {
                     </div>
                   </div>
                 </div>
+
 
                 {/* Log timeline */}
                 <div className="flex-1 overflow-y-auto p-5">

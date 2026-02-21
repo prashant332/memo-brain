@@ -40,10 +40,10 @@
 
 | Field | Value |
 |-------|-------|
-| **Date** | YYYY-MM-DD |
-| **Reported by** | Name |
+| **Date** | 2026-02-21 |
+| **Reported by** | Prashant |
 | **Severity** |  High  |
-| **Status** | Open |
+| **Status** | Fixed |
 | **Phase** | Phase 2 |
 | **Area** | Chat  |
 | **Feature** | Log interpretation and entry |
@@ -51,6 +51,88 @@
 **Steps to Reproduce**
 
 1. While entering the chat like "Thank you for using LIC's Online facility for Renewal Payment. We have received an amount of Rs.23,743.00 vide Transaction ID 42224331 dated 20/02/2026." it is not captured the amount and asked me to enter the amount manually. the additional data should be asked only for the missing details.
+
+**Expected Behaviour**
+
+Amount, transaction ID, and date should be extracted automatically from the message. The metadata form should not appear if all key details are already present.
+
+**Actual Behaviour**
+
+The metadata form always appeared after logging, asking the user to re-enter the amount even though it was clearly stated in the message.
+
+**Environment**
+
+- Browser: Chrome 123 / Firefox / Safari
+- Device: Desktop / Android (PWA)
+
+**Root Cause (filled in by developer)**
+
+The AI system prompt unconditionally instructed the AI to set `ask_followup: true` after every log action, regardless of whether the data was already present in the user's message. Additionally, the `MetadataForm` component had no way to receive pre-extracted metadata, so it always rendered as an empty form.
+
+**Fix Applied**
+
+- `backend/src/services/ai.js` — Made `ask_followup` conditional: only `true` when key fields (amount for bills, date for events) are genuinely missing. Added explicit currency parsing instructions for Indian/international formats (e.g. `Rs.23,743.00`).
+- `frontend/src/components/MessageBubble.jsx` — Passes `action.metadata` as `initialValues` to `MetadataForm`.
+- `frontend/src/components/MetadataForm.jsx` — Added `initialValues` prop to pre-populate form fields with AI-extracted data.
+
+---
+
+### DEF-002 — The Activities Page is not mobile friendly. It just lists the activities, but the right side details are not available in mobile. Possibly needs a fix to be able to view it mobile.
+
+| Field | Value |
+|-------|-------|
+| **Date** | 2026-02-21 |
+| **Reported by** | Prashant |
+| **Severity** | High |
+| **Status** | Fixed |
+| **Phase** | Phase 2 |
+| **Area** | Activities |
+| **Feature** | Activities Page layout |
+
+**Steps to Reproduce**
+
+1. Open the Activities page on a mobile device or narrow viewport.
+2. Tap any activity in the list.
+3. The right-side detail panel (history, edit, deactivate) is not visible or accessible.
+
+**Expected Behaviour**
+
+Tapping an activity should show its full detail view (history, edit/deactivate buttons). On desktop both panels remain side by side.
+
+**Actual Behaviour**
+
+The page used a fixed two-column flex layout (`w-80` list + `flex-1` detail). On mobile both panels were squeezed together and the detail panel was effectively hidden or inaccessible.
+
+**Environment**
+
+- Browser: Chrome / Firefox / Safari
+- Device: Android (PWA) / Mobile browser
+
+**Root Cause (filled in by developer)**
+
+The layout used a hardcoded `flex` row with `w-80` for the list panel and `flex-1` for the detail panel, with no responsive breakpoints. On narrow screens both panels rendered side by side, making the detail panel unreachable.
+
+**Fix Applied**
+
+- `frontend/src/pages/ActivitiesPage.jsx` — Added `mobileView` state (`'list'` | `'detail'`). On mobile, only one panel is visible at a time (toggled via `hidden`/`flex`/`block` with `md:` overrides). Added a back chevron button (mobile-only, `md:hidden`) in the detail header to return to the list. `handleDeactivate` now also resets `mobileView` to `'list'`. Header labels ("Show inactive", "Add Activity" text) hidden on xs to prevent overflow.
+
+---
+
+### DEF-003 — _(short title)_
+
+| Field | Value |
+|-------|-------|
+| **Date** | YYYY-MM-DD |
+| **Reported by** | Name |
+| **Severity** | Critical \| High \| Medium \| Low |
+| **Status** | Open |
+| **Phase** | Phase 1 \| Phase 2 \| Phase 3 |
+| **Area** | Chat \| Dashboard \| Activities \| Settings \| Auth |
+| **Feature** | _(feature name)_ |
+
+**Steps to Reproduce**
+
+1.
 
 **Expected Behaviour**
 
@@ -62,7 +144,7 @@ What actually happens (include error messages, screenshots if applicable).
 
 **Environment**
 
-- Browser: Chrome 123 / Firefox / Safari
+- Browser: Chrome / Firefox / Safari
 - Device: Desktop / Android (PWA)
 - Backend log output (if relevant): paste snippet
 
@@ -128,7 +210,8 @@ Please propose and updated based on the rquirement
 
 | ID | Type | Title | Resolution | Date Closed |
 |----|------|-------|-----------|-------------|
-| — | — | — | — | — |
+| DEF-001 | Defect | Asking to enter amount manually even though initial log contains it | Fixed | 2026-02-21 |
+| DEF-002 | Defect | Activities Page not mobile friendly — detail panel inaccessible on mobile | Fixed | 2026-02-21 |
 
 ---
 
@@ -136,7 +219,9 @@ Please propose and updated based on the rquirement
 
 | ID | Type | Title | Severity/Priority | Status | Area |
 |----|------|-------|-------------------|--------|------|
-| DEF-001 | Defect | _(example)_ | — | Open | — |
+| DEF-001 | Defect | Asking to enter amount manually even though initial log contains it | High | Fixed | Chat |
+| DEF-002 | Defect | Activities Page not mobile friendly — detail panel inaccessible on mobile | High | Fixed | Activities |
+| DEF-003 | Defect | _(next defect)_ | — | Open | — |
 | ENH-001 | Enhancement | Creating log using voice along with type | Should Have | In Progress | Chat |
 
 ---
