@@ -1,9 +1,19 @@
+# Environment files (never commit secrets)
 .env
-node_modules/
-.claude
-backend/node_modules/
 backend/.env
-frontend/node_modules/
 frontend/.env
+
+# Dependencies
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# Build output
 dist/
 build/
+
+# Docker
+postgres_data/
+
+# IDE / tools
+.claude

@@ -96,6 +96,26 @@ router.put('/', async (req, res) => {
   }
 })
 
+// GET /api/settings/reveal-key - Return decrypted key (explicit user request)
+router.get('/reveal-key', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT api_key_enc FROM user_settings WHERE user_id = $1',
+      [req.user.id]
+    )
+
+    if (result.rows.length === 0 || !result.rows[0].api_key_enc) {
+      return res.status(404).json({ error: 'No API key saved' })
+    }
+
+    const apiKey = decrypt(result.rows[0].api_key_enc)
+    res.json({ api_key: apiKey })
+  } catch (err) {
+    console.error('Reveal key error:', err)
+    res.status(500).json({ error: 'Failed to retrieve API key' })
+  }
+})
+
 // POST /api/settings/verify-key - Verify API key works
 router.post('/verify-key', async (req, res) => {
   try {

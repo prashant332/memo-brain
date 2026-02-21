@@ -38,6 +38,7 @@ export default function SettingsPage() {
   const [showKey, setShowKey] = useState(false)
 
   const [message, setMessage] = useState({ type: '', text: '' })
+  const [revealing, setRevealing] = useState(false)
 
   // Load settings on mount
   useEffect(() => {
@@ -98,6 +99,20 @@ export default function SettingsPage() {
       setMessage({ type: 'error', text: err.response?.data?.error || 'Failed to save settings' })
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleRevealKey = async () => {
+    setRevealing(true)
+    setMessage({ type: '', text: '' })
+    try {
+      const { data } = await api.get('/settings/reveal-key')
+      setApiKey(data.api_key)
+      setShowKey(true)
+    } catch (err) {
+      setMessage({ type: 'error', text: err.response?.data?.error || 'Failed to reveal key' })
+    } finally {
+      setRevealing(false)
     }
   }
 
@@ -218,13 +233,15 @@ export default function SettingsPage() {
                 placeholder={settings?.has_api_key ? '••••••••••••••••' : currentProvider?.keyPlaceholder}
                 className="input-field pr-20"
               />
-              <button
-                type="button"
-                onClick={() => setShowKey(!showKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 text-sm"
-              >
-                {showKey ? 'Hide' : 'Show'}
-              </button>
+              {apiKey && (
+                <button
+                  type="button"
+                  onClick={() => setShowKey(!showKey)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 text-sm"
+                >
+                  {showKey ? 'Hide' : 'Show'}
+                </button>
+              )}
             </div>
 
             <p className="text-xs text-slate-500">
@@ -240,7 +257,7 @@ export default function SettingsPage() {
             </p>
 
             {/* Action Buttons */}
-            <div className="flex gap-3 pt-2">
+            <div className="flex gap-3 pt-2 flex-wrap">
               <button
                 onClick={handleVerifyKey}
                 disabled={!apiKey.trim() || verifying}
@@ -248,6 +265,16 @@ export default function SettingsPage() {
               >
                 {verifying ? 'Verifying...' : 'Verify Key'}
               </button>
+
+              {settings?.has_api_key && !apiKey && (
+                <button
+                  onClick={handleRevealKey}
+                  disabled={revealing}
+                  className="btn-ghost text-sm"
+                >
+                  {revealing ? 'Revealing...' : 'Reveal Saved Key'}
+                </button>
+              )}
 
               {settings?.has_api_key && (
                 <button
