@@ -9,6 +9,7 @@ import MessageBubble from '../components/MessageBubble'
 import TypingIndicator from '../components/TypingIndicator'
 import SetupPrompt from '../components/SetupPrompt'
 import NotificationBell from '../components/NotificationBell'
+import { useVoiceInput, VoiceState } from '../hooks/useVoiceInput'
 
 const SUGGESTIONS = [
   'Paid electricity bill today',
@@ -34,10 +35,24 @@ export default function ChatPage() {
   // Input state
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [interimVoice, setInterimVoice] = useState('')
 
   // Refs
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+
+  const { isSupported: voiceSupported, voiceState, toggle: toggleVoice } = useVoiceInput({
+    onResult: (transcript) => {
+      setInput((prev) => {
+        const t = prev.trim()
+        return t ? `${t} ${transcript}` : transcript
+      })
+      setInterimVoice('')
+      setTimeout(() => inputRef.current?.focus(), 0)
+    },
+    onInterim: (interim) => setInterimVoice(interim),
+    onError:   (message) => { toast.error(message); setInterimVoice('') },
+  })
 
   // Scroll to bottom
   const scrollToBottom = useCallback(() => {
@@ -324,41 +339,105 @@ export default function ChatPage() {
         <div className="border-t border-slate-800 p-4 bg-slate-900/50 safe-bottom">
           <div className="max-w-3xl mx-auto">
             <div className="flex gap-3">
+              {/* Textarea */}
               <div className="flex-1 relative">
                 <textarea
                   ref={inputRef}
-                  value={input}
+                  value={
+                    voiceState === VoiceState.LISTENING && interimVoice
+                      ? `${input}${input ? ' ' : ''}${interimVoice}`
+                      : input
+                  }
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Type a message..."
+                  placeholder={
+                    voiceState === VoiceState.LISTENING
+                      ? 'Listening...'
+                      : 'Type a message or use the mic...'
+                  }
                   rows={1}
-                  className="input-field resize-none pr-12 min-h-[48px] max-h-32"
-                  style={{
-                    height: 'auto',
-                    minHeight: '48px'
-                  }}
+                  readOnly={voiceState === VoiceState.LISTENING}
+                  className={`input-field resize-none pr-12 min-h-[48px] max-h-32 transition-all duration-200 ${
+                    voiceState === VoiceState.LISTENING
+                      ? 'border-primary-500 ring-2 ring-primary-500/30'
+                      : ''
+                  }`}
+                  style={{ height: 'auto', minHeight: '48px' }}
                   onInput={(e) => {
                     e.target.style.height = 'auto'
                     e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px'
                   }}
                 />
               </div>
+
+              {/* Mic Button */}
+              {voiceSupported && (
+                <button
+                  onClick={toggleVoice}
+                  disabled={sending}
+                  title={
+                    voiceState === VoiceState.LISTENING ? 'Stop recording'
+                    : voiceState === VoiceState.ERROR   ? 'Voice error — click to retry'
+                    : 'Start voice input'
+                  }
+                  className={`relative h-12 w-12 flex items-center justify-center rounded-lg
+                    transition-all duration-200 flex-shrink-0
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-950
+                    ${voiceState === VoiceState.LISTENING
+                      ? 'bg-error-500 hover:bg-error-600 text-white focus:ring-error-500'
+                      : voiceState === VoiceState.ERROR
+                      ? 'bg-error-500/20 text-error-400 hover:bg-error-500/30 focus:ring-error-500'
+                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-slate-100 focus:ring-slate-500'
+                    }`}
+                >
+                  {voiceState === VoiceState.LISTENING && (
+                    <span className="absolute inset-0 rounded-lg animate-ping bg-error-500 opacity-30" aria-hidden="true" />
+                  )}
+                  {voiceState === VoiceState.LISTENING ? (
+                    /* Filled mic — recording */
+                    <svg className="w-5 h-5 relative z-10" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z" />
+                      <path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.93V19H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.07A7 7 0 0 0 19 10z" />
+                    </svg>
+                  ) : voiceState === VoiceState.ERROR ? (
+                    /* Warning icon — error */
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  ) : (
+                    /* Outline mic — idle */
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                    </svg>
+                  )}
+                </button>
+              )}
+
+              {/* Send Button */}
               <button
                 onClick={() => handleSend()}
                 disabled={!input.trim() || sending}
-                className="btn-primary px-4 h-12 flex items-center justify-center"
+                className="btn-primary px-4 h-12 flex items-center justify-center flex-shrink-0"
               >
                 {sending ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                   </svg>
                 )}
               </button>
             </div>
+
             <p className="text-xs text-slate-500 mt-2 text-center">
-              Press Enter to send, Shift+Enter for new line
+              {voiceSupported
+                ? 'Press Enter to send · Shift+Enter for new line · Use mic to speak'
+                : 'Press Enter to send, Shift+Enter for new line'
+              }
             </p>
           </div>
         </div>

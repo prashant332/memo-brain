@@ -88,38 +88,39 @@ _File(s) changed, commit reference, or PR link._
 
 ---
 
-### ENH-001 — [Short title]
+### ENH-001 — Creating log using voice along with type
 
 | Field | Value |
 |-------|-------|
-| **Date** | YYYY-MM-DD |
-| **Requested by** | Name |
-| **Priority** | Must Have / Should Have / Nice to Have |
-| **Status** | Proposed |
-| **Target Phase** | Phase 3 / Phase 4 / Backlog |
-| **Area** | Chat / Dashboard Strip / Activities Page / Analytics / Notifications / Brain Sharing / Settings / Auth / Infrastructure |
+| **Date** | 2026-02-21 |
+| **Requested by** | Prashant |
+| **Priority** | Should Have |
+| **Status** | In Progress |
+| **Target Phase** | Phase 3 |
+| **Area** | Chat |
 
 **Problem / Motivation**
 
-What user pain point does this solve? Why does it matter?
+Typing can be hastle at times and may lead to giving insufficient data while logging. 
 
 **Proposed Solution**
 
-Describe the desired behaviour from the user's perspective.
+So it will be helpful to allow user to talk to the memo brain to create a log. So it should recognize the voice, and convert to text and confirm from user about correctness before processing the data and log.
+
+Add a user friendly mic icon to tal and record message to convert to text and process from user along with ability to type and send.
 
 **Acceptance Criteria**
 
-- [ ] Criterion 1
-- [ ] Criterion 2
-- [ ] Criterion 3
+- [ ] Accurate voice recognition and converting to text
+- [ ] Seemless processing of the text and integrate with existing features
+- [ ] Seemless void integration even for querying
 
 **Technical Notes (optional)**
 
-Hints on implementation approach, affected files, DB changes needed, etc.
+Please propose and updated based on the rquirement
 
 **Out of Scope**
 
-What this enhancement explicitly does NOT include.
 
 ---
 
@@ -138,7 +139,7 @@ What this enhancement explicitly does NOT include.
 | ID | Type | Title | Severity/Priority | Status | Area |
 |----|------|-------|-------------------|--------|------|
 | DEF-001 | Defect | _(example)_ | — | Open | — |
-| ENH-001 | Enhancement | _(example)_ | — | Proposed | — |
+| ENH-001 | Enhancement | Creating log using voice along with type | Should Have | In Progress | Chat |
 
 ---
 
