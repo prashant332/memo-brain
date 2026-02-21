@@ -3,7 +3,11 @@ import { useAuth } from './hooks/useAuth'
 import LoginPage from './pages/LoginPage'
 import SettingsPage from './pages/SettingsPage'
 import ChatPage from './pages/ChatPage'
+import ActivitiesPage from './pages/ActivitiesPage'
+import AnalyticsPage from './pages/AnalyticsPage'
+import SharingPage from './pages/SharingPage'
 import OfflineIndicator from './components/OfflineIndicator'
+import { AppProvider } from './context/AppContext'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -35,7 +39,7 @@ function PublicRoute({ children }) {
 
 export default function App() {
   return (
-    <>
+    <AppProvider>
       <OfflineIndicator />
       <Routes>
         <Route path="/login" element={
@@ -48,12 +52,27 @@ export default function App() {
             <SettingsPage />
           </ProtectedRoute>
         } />
+        <Route path="/activities" element={
+          <ProtectedRoute>
+            <ActivitiesPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/analytics" element={
+          <ProtectedRoute>
+            <AnalyticsPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/sharing" element={
+          <ProtectedRoute>
+            <SharingPage />
+          </ProtectedRoute>
+        } />
         <Route path="/" element={
           <ProtectedRoute>
             <ChatPage />
           </ProtectedRoute>
         } />
       </Routes>
-    </>
+    </AppProvider>
   )
 }

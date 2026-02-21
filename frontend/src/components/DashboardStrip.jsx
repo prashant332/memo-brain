@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { format, isToday, isTomorrow, parseISO, isSameYear } from 'date-fns'
 import api from '../lib/api'
 
-export default function DashboardStrip() {
+export default function DashboardStrip({ ownerUserId }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -10,7 +10,10 @@ export default function DashboardStrip() {
   const loadDashboard = useCallback(async () => {
     try {
       setError(null)
-      const { data: dashboard } = await api.get('/activities/dashboard')
+      const url = ownerUserId
+        ? `/shares/${ownerUserId}/dashboard`
+        : '/activities/dashboard'
+      const { data: dashboard } = await api.get(url)
       setData(dashboard)
     } catch (err) {
       console.error('Dashboard load error:', err)
@@ -18,7 +21,7 @@ export default function DashboardStrip() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [ownerUserId])
 
   useEffect(() => {
     loadDashboard()
@@ -76,6 +79,13 @@ export default function DashboardStrip() {
 
   return (
     <div className="border-b border-slate-800 bg-slate-900/30">
+      {/* Shared brain indicator */}
+      {data?.isSharedView && (
+        <div className="px-4 py-1.5 bg-primary-500/10 border-b border-primary-500/20">
+          <p className="text-xs text-primary-400">Viewing shared brain</p>
+        </div>
+      )}
+
       {/* Overdue Section */}
       {data.overdue?.length > 0 && (
         <div className="px-4 py-2 border-b border-slate-800/50">

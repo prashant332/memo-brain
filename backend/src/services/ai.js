@@ -20,10 +20,16 @@ INTENT TYPES:
 - "log_done"    → user completed something ("paid bill", "visited bank")
 - "log_pending" → user plans to do something ("going to bank tomorrow")
 - "log_event"   → future event ("birthday on March 5")
-- "query"       → asking a question ("did I pay electricity?")
+- "query"       → asking a question about past or current data ("did I pay electricity?", "what's pending this month?", "what's overdue?")
 - "confirm_done" → user confirmed they're done adding details (said "done", "no thanks", "that's all", etc.)
 - "add_details" → user is providing additional details (amount, notes, etc.)
 - "none"        → casual chat, no action needed
+
+QUERY TYPES (set query_type when intent is "query"):
+- "history"        → past/historical queries ("did I pay in October?", "show last 3 months", "when did I last pay electricity?")
+- "current_status" → current period status ("what bills are pending this month?", "show my bills")
+- "upcoming"       → near-future items ("what's due this week?", "upcoming tasks")
+- "overdue"        → overdue items ("what's overdue?", "late tasks")
 
 CATEGORIES: bill | task | event | note
 
@@ -210,6 +216,27 @@ export async function callAI(userId, messages) {
   }
 
   return rawResponse
+}
+
+// Call AI with injected query results (second pass for query intent)
+export async function callAIWithQueryResults(userId, messages, queryResults) {
+  const { provider, apiKey } = await getUserAISettings(userId)
+
+  if (!apiKey) {
+    throw new Error('No API key configured.')
+  }
+
+  const userContext = await getUserContext(userId)
+  const basePrompt = buildSystemPrompt(userContext)
+
+  const queryResultsBlock = `\n\nQUERY RESULTS (use this data to answer the user's question accurately):\n${JSON.stringify(queryResults, null, 2)}\n\nIMPORTANT: Answer based on the QUERY RESULTS above. Cite specific data (dates, amounts, statuses) from these results. If results are empty, say so clearly.`
+
+  const systemPrompt = basePrompt + queryResultsBlock
+
+  if (provider === 'openai') {
+    return callOpenAI(apiKey, systemPrompt, messages)
+  }
+  return callClaude(apiKey, systemPrompt, messages)
 }
 
 // Parse AI response into message and action

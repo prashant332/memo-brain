@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import pool from '../db/pool.js'
 import { authMiddleware } from '../middleware/auth.js'
-import { callAI, parseAIResponse } from '../services/ai.js'
+import { callAI, callAIWithQueryResults, parseAIResponse } from '../services/ai.js'
 
 const router = Router()
 
@@ -134,7 +134,22 @@ router.post('/sessions/:sessionId/message', async (req, res) => {
     }
 
     // Parse response
-    const { message, action } = parseAIResponse(rawResponse)
+    let { message, action } = parseAIResponse(rawResponse)
+
+    // If query intent, fetch real DB data and call AI again with results
+    if (action?.intent === 'query') {
+      try {
+        const queryResults = await executeQuery(req.user.id, action)
+        const secondResponse = await callAIWithQueryResults(req.user.id, history, queryResults)
+        const parsed = parseAIResponse(secondResponse)
+        message = parsed.message
+        // Keep intent as query but merge any updated action fields
+        action = { ...action, ...parsed.action, intent: 'query', query_results_used: true }
+      } catch (queryErr) {
+        console.error('Query execution error:', queryErr)
+        // Fall through with original response if query fails
+      }
+    }
 
     // Execute action if needed
     let actionResult = null
@@ -178,6 +193,82 @@ router.post('/sessions/:sessionId/message', async (req, res) => {
     res.status(500).json({ error: 'Failed to send message' })
   }
 })
+
+// Execute a DB query based on AI-detected query intent
+async function executeQuery(userId, action) {
+  const { query_type, activity_title } = action
+
+  if (query_type === 'current_status') {
+    const period = new Date().toISOString().slice(0, 7)
+    const result = await pool.query(
+      `SELECT a.title, a.category, a.recurrence,
+              COALESCE(
+                (SELECT l.status FROM activity_logs l
+                 WHERE l.activity_id = a.id AND l.period = $2
+                 ORDER BY l.created_at DESC LIMIT 1),
+                'pending'
+              ) as status,
+              (SELECT l.metadata FROM activity_logs l
+               WHERE l.activity_id = a.id AND l.period = $2
+               ORDER BY l.created_at DESC LIMIT 1) as metadata
+       FROM activities a
+       WHERE a.user_id = $1 AND a.recurrence = 'monthly' AND a.is_active = true
+       ORDER BY a.title ASC`,
+      [userId, period]
+    )
+    return { query_type, period, bills: result.rows }
+  }
+
+  if (query_type === 'overdue') {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const result = await pool.query(
+      `SELECT a.title, a.category, l.status, l.due_date, l.metadata
+       FROM activity_logs l
+       JOIN activities a ON l.activity_id = a.id
+       WHERE l.user_id = $1 AND a.category != 'event'
+         AND l.status = 'pending' AND l.due_date < $2
+       ORDER BY l.due_date ASC`,
+      [userId, today.toISOString()]
+    )
+    return { query_type, overdue: result.rows }
+  }
+
+  if (query_type === 'upcoming') {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const nextWeek = new Date(today)
+    nextWeek.setDate(nextWeek.getDate() + 7)
+    const result = await pool.query(
+      `SELECT a.title, a.category, l.status, l.due_date, l.metadata
+       FROM activity_logs l
+       JOIN activities a ON l.activity_id = a.id
+       WHERE l.user_id = $1 AND l.status = 'pending'
+         AND l.due_date >= $2 AND l.due_date < $3
+       ORDER BY l.due_date ASC`,
+      [userId, today.toISOString(), nextWeek.toISOString()]
+    )
+    return { query_type, upcoming: result.rows }
+  }
+
+  // Default: history query, optionally filtered by activity title
+  const params = [userId]
+  let titleFilter = ''
+  if (activity_title) {
+    params.push(`%${activity_title}%`)
+    titleFilter = `AND LOWER(a.title) ILIKE LOWER($${params.length})`
+  }
+
+  const result = await pool.query(
+    `SELECT a.title, a.category, l.status, l.period, l.metadata, l.completed_at, l.due_date, l.created_at
+     FROM activity_logs l
+     JOIN activities a ON l.activity_id = a.id
+     WHERE l.user_id = $1 ${titleFilter}
+     ORDER BY l.created_at DESC LIMIT 12`,
+    params
+  )
+  return { query_type: 'history', activity_title, logs: result.rows }
+}
 
 // Store session context for follow-up details
 const sessionContext = new Map()

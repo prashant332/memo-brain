@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import pool from '../db/pool.js'
 import { authMiddleware } from '../middleware/auth.js'
+import { createRecurringLogs } from '../services/cron.js'
 
 const router = Router()
 
@@ -11,6 +12,7 @@ router.use(authMiddleware)
 router.get('/', async (req, res) => {
   try {
     const currentPeriod = new Date().toISOString().slice(0, 7) // YYYY-MM
+    const includeInactive = req.query.include_inactive === 'true'
 
     const result = await pool.query(
       `SELECT
@@ -28,15 +30,122 @@ router.get('/', async (req, res) => {
           'pending'
         ) as current_status
       FROM activities a
-      WHERE a.user_id = $1 AND a.is_active = true
+      WHERE a.user_id = $1 AND (a.is_active = true OR $3 = true)
       ORDER BY a.created_at DESC`,
-      [req.user.id, currentPeriod]
+      [req.user.id, currentPeriod, includeInactive]
     )
 
     res.json(result.rows)
   } catch (err) {
     console.error('Get activities error:', err)
     res.status(500).json({ error: 'Failed to get activities' })
+  }
+})
+
+// GET /api/activities/:activityId/logs - Paginated log history for an activity
+router.get('/:activityId/logs', async (req, res) => {
+  try {
+    const { activityId } = req.params
+    const offset = parseInt(req.query.offset) || 0
+    const limit = 20
+
+    // Verify activity belongs to user
+    const activityCheck = await pool.query(
+      'SELECT id, title, category FROM activities WHERE id = $1 AND user_id = $2',
+      [activityId, req.user.id]
+    )
+    if (activityCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Activity not found' })
+    }
+
+    const result = await pool.query(
+      `SELECT l.id, l.status, l.period, l.due_date, l.completed_at, l.metadata, l.created_at
+       FROM activity_logs l
+       WHERE l.activity_id = $1 AND l.user_id = $2
+       ORDER BY l.created_at DESC
+       LIMIT $3 OFFSET $4`,
+      [activityId, req.user.id, limit, offset]
+    )
+
+    const countResult = await pool.query(
+      'SELECT COUNT(*) FROM activity_logs WHERE activity_id = $1 AND user_id = $2',
+      [activityId, req.user.id]
+    )
+
+    res.json({
+      logs: result.rows,
+      total: parseInt(countResult.rows[0].count),
+      offset,
+      limit
+    })
+  } catch (err) {
+    console.error('Get activity logs error:', err)
+    res.status(500).json({ error: 'Failed to get activity logs' })
+  }
+})
+
+// PATCH /api/activities/:activityId - Edit activity title, category, recurrence_day
+router.patch('/:activityId', async (req, res) => {
+  try {
+    const { activityId } = req.params
+    const { title, category, recurrence_day, recurrence } = req.body
+
+    // Verify activity belongs to user
+    const activityCheck = await pool.query(
+      'SELECT id FROM activities WHERE id = $1 AND user_id = $2',
+      [activityId, req.user.id]
+    )
+    if (activityCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Activity not found' })
+    }
+
+    const updates = []
+    const values = []
+    let paramIndex = 1
+
+    if (title !== undefined) {
+      if (!title.trim()) return res.status(400).json({ error: 'Title cannot be empty' })
+      updates.push(`title = $${paramIndex}`)
+      values.push(title.trim())
+      paramIndex++
+    }
+
+    if (category !== undefined) {
+      const validCategories = ['bill', 'task', 'event', 'note']
+      if (!validCategories.includes(category)) {
+        return res.status(400).json({ error: 'Invalid category' })
+      }
+      updates.push(`category = $${paramIndex}`)
+      values.push(category)
+      paramIndex++
+    }
+
+    if (recurrence !== undefined) {
+      updates.push(`recurrence = $${paramIndex}`)
+      values.push(recurrence || null)
+      paramIndex++
+    }
+
+    if (recurrence_day !== undefined) {
+      updates.push(`recurrence_day = $${paramIndex}`)
+      values.push(recurrence_day || null)
+      paramIndex++
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No updates provided' })
+    }
+
+    values.push(activityId)
+    const result = await pool.query(
+      `UPDATE activities SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      values
+    )
+
+    res.json(result.rows[0])
+  } catch (err) {
+    console.error('Update activity error:', err)
+    res.status(500).json({ error: 'Failed to update activity' })
   }
 })
 
@@ -297,6 +406,18 @@ router.patch('/log/:logId', async (req, res) => {
   } catch (err) {
     console.error('Update log error:', err)
     res.status(500).json({ error: 'Failed to update log' })
+  }
+})
+
+// POST /api/activities/trigger-recurring - Manual trigger for testing
+router.post('/trigger-recurring', async (req, res) => {
+  try {
+    const period = req.query.period || new Date().toISOString().slice(0, 7)
+    const result = await createRecurringLogs(period)
+    res.json({ success: true, period, ...result })
+  } catch (err) {
+    console.error('Trigger recurring error:', err)
+    res.status(500).json({ error: 'Failed to trigger recurring logs' })
   }
 })
 

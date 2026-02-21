@@ -2,11 +2,13 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../lib/api'
 import { useToast } from '../components/Toast'
+import { useAppContext } from '../context/AppContext'
 import SessionSidebar from '../components/SessionSidebar'
 import DashboardStrip from '../components/DashboardStrip'
 import MessageBubble from '../components/MessageBubble'
 import TypingIndicator from '../components/TypingIndicator'
 import SetupPrompt from '../components/SetupPrompt'
+import NotificationBell from '../components/NotificationBell'
 
 const SUGGESTIONS = [
   'Paid electricity bill today',
@@ -19,6 +21,7 @@ const SUGGESTIONS = [
 export default function ChatPage() {
   const navigate = useNavigate()
   const toast = useToast()
+  const { activeBrainOwnerId } = useAppContext()
 
   // Sidebar state
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -260,14 +263,15 @@ export default function ChatPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <div>
+          <div className="flex-1">
             <h1 className="font-semibold text-lg">MemoBrain</h1>
             <p className="text-xs text-slate-500">Your personal memory assistant</p>
           </div>
+          <NotificationBell />
         </header>
 
-        {/* Dashboard Strip */}
-        <DashboardStrip />
+        {/* Dashboard Strip — shows shared brain if active */}
+        <DashboardStrip ownerUserId={activeBrainOwnerId} />
 
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto px-4 py-4">

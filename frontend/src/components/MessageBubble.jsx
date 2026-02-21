@@ -59,6 +59,18 @@ export default function MessageBubble({ message, onQuickReply, onSaveMetadata, o
           </div>
         )}
 
+        {/* Query indicator — lets user know real DB was searched */}
+        {!isUser && action?.intent === 'query' && action?.query_results_used && (
+          <div className="mt-1.5">
+            <span className="text-xs text-slate-500 flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              Searched your data
+            </span>
+          </div>
+        )}
+
         {/* Error indicator */}
         {!isUser && msgMetadata.error && (
           <div className="mt-2">
