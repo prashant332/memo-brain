@@ -182,10 +182,23 @@ router.post('/sessions/:sessionId/message', async (req, res) => {
 // Store session context for follow-up details
 const sessionContext = new Map()
 
+// Generate consecutive YYYY-MM period strings starting from startPeriod
+function getAdvancePeriods(startPeriod, months) {
+  const [year, month] = startPeriod.split('-').map(Number)
+  const periods = []
+  for (let i = 0; i < months; i++) {
+    const d = new Date(year, month - 1 + i, 1)
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    periods.push(`${y}-${m}`)
+  }
+  return periods
+}
+
 // Execute action from AI response
 async function executeAction(userId, action, sessionId) {
   try {
-    const { intent, activity_title, category, recurrence, due_date, period, notes, metadata } = action
+    const { intent, activity_title, category, recurrence, due_date, period, notes, metadata, advance_months } = action
 
     // Handle add_details - update existing log in this session
     if (intent === 'add_details') {
@@ -252,19 +265,26 @@ async function executeAction(userId, action, sessionId) {
       logMetadata.notes = notes
     }
 
-    // Create log entry with all data in metadata
+    // For advance payments, create one log entry per covered month
+    const months = (status === 'done' && advance_months > 1) ? advance_months : 1
+    const periods = getAdvancePeriods(logPeriod, months)
     const completedAt = status === 'done' ? new Date().toISOString() : null
-    const logResult = await pool.query(
-      `INSERT INTO activity_logs (activity_id, user_id, status, period, due_date, completed_at, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id`,
-      [activityId, userId, status, logPeriod, due_date, completedAt, JSON.stringify(logMetadata)]
-    )
 
-    // Store context for follow-up details
+    let firstLogId
+    for (const p of periods) {
+      const logResult = await pool.query(
+        `INSERT INTO activity_logs (activity_id, user_id, status, period, due_date, completed_at, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id`,
+        [activityId, userId, status, p, due_date, completedAt, JSON.stringify(logMetadata)]
+      )
+      if (!firstLogId) firstLogId = logResult.rows[0].id
+    }
+
+    // Store context for follow-up details (linked to first log)
     sessionContext.set(sessionId, {
       activity_id: activityId,
-      log_id: logResult.rows[0].id,
+      log_id: firstLogId,
       activity_title,
       category
     })
@@ -272,8 +292,9 @@ async function executeAction(userId, action, sessionId) {
     return {
       success: true,
       activity_id: activityId,
-      log_id: logResult.rows[0].id,
-      status
+      log_id: firstLogId,
+      status,
+      periods_logged: periods
     }
   } catch (err) {
     console.error('Execute action error:', err)

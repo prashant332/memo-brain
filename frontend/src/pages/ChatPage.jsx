@@ -176,6 +176,51 @@ export default function ChatPage() {
     handleSend(text)
   }
 
+  // Save metadata directly via API (no AI round-trip)
+  const handleSaveMetadata = async (logId, metadata) => {
+    try {
+      await api.patch(`/activities/log/${logId}`, { metadata })
+      toast.success('Details saved!')
+
+      // Mark the form as completed by removing ask_followup from the message
+      setMessages(prev => prev.map(msg => {
+        if (msg.metadata?.actionResult?.log_id === logId) {
+          return {
+            ...msg,
+            metadata: {
+              ...msg.metadata,
+              action: { ...msg.metadata.action, ask_followup: false }
+            }
+          }
+        }
+        return msg
+      }))
+
+      // Reload dashboard to show updated data
+      window.__reloadDashboard?.()
+    } catch (err) {
+      console.error('Save metadata error:', err)
+      toast.error('Failed to save details')
+    }
+  }
+
+  // Skip metadata collection
+  const handleSkipMetadata = () => {
+    // Mark all current ask_followup as false
+    setMessages(prev => prev.map(msg => {
+      if (msg.metadata?.action?.ask_followup) {
+        return {
+          ...msg,
+          metadata: {
+            ...msg.metadata,
+            action: { ...msg.metadata.action, ask_followup: false }
+          }
+        }
+      }
+      return msg
+    }))
+  }
+
   return (
     <div className="h-screen flex overflow-hidden bg-slate-950">
       {/* Setup Prompt for first-time users */}
@@ -261,6 +306,8 @@ export default function ChatPage() {
                   message={msg}
                   isLatest={index === messages.length - 1 && !sending}
                   onQuickReply={handleQuickReply}
+                  onSaveMetadata={handleSaveMetadata}
+                  onSkipMetadata={handleSkipMetadata}
                 />
               ))}
               {sending && <TypingIndicator />}

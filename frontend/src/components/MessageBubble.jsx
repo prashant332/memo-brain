@@ -1,5 +1,6 @@
 import { format, parseISO } from 'date-fns'
 import CategoryBadge from './CategoryBadge'
+import MetadataForm from './MetadataForm'
 
 const intentLabels = {
   log_done: { text: 'Logged', color: 'text-success-400', icon: '✓' },
@@ -9,14 +10,18 @@ const intentLabels = {
   query: { text: 'Query', color: 'text-slate-400', icon: '?' }
 }
 
-export default function MessageBubble({ message, onQuickReply, isLatest }) {
+export default function MessageBubble({ message, onQuickReply, onSaveMetadata, onSkipMetadata, isLatest }) {
   const isUser = message.role === 'user'
-  const metadata = message.metadata || {}
-  const action = metadata.action
-  const actionResult = metadata.actionResult
+  const msgMetadata = message.metadata || {}
+  const action = msgMetadata.action
+  const actionResult = msgMetadata.actionResult
 
   const showActionPill = action && action.intent && action.intent !== 'none'
   const intentInfo = showActionPill ? intentLabels[action.intent] : null
+
+  // Show inline form when we have a successful log action with ask_followup
+  const showMetadataForm = !isUser && isLatest && action?.ask_followup &&
+    actionResult?.success && actionResult?.log_id && action.category
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-fade-in`}>
@@ -55,38 +60,20 @@ export default function MessageBubble({ message, onQuickReply, isLatest }) {
         )}
 
         {/* Error indicator */}
-        {!isUser && metadata.error && (
+        {!isUser && msgMetadata.error && (
           <div className="mt-2">
             <span className="text-xs text-error-400">⚠ Error occurred</span>
           </div>
         )}
 
-        {/* Quick Reply Buttons - dynamic suggestions from AI */}
-        {!isUser && isLatest && action?.ask_followup && onQuickReply && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {action.followup_suggestions?.map((suggestion, idx) => (
-              <button
-                key={idx}
-                onClick={() => onQuickReply(suggestion)}
-                className={`px-3 py-1.5 rounded-full text-xs transition-colors ${
-                  suggestion.toLowerCase().includes('done')
-                    ? 'bg-success-500/20 text-success-400 hover:bg-success-500/30'
-                    : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
-                }`}
-              >
-                {suggestion}
-              </button>
-            ))}
-            {/* Always show Done button if not in suggestions */}
-            {!action.followup_suggestions?.some(s => s.toLowerCase().includes('done')) && (
-              <button
-                onClick={() => onQuickReply('Done')}
-                className="px-3 py-1.5 bg-success-500/20 text-success-400 hover:bg-success-500/30 rounded-full text-xs transition-colors"
-              >
-                Done ✓
-              </button>
-            )}
-          </div>
+        {/* Inline Metadata Form - for collecting additional details */}
+        {showMetadataForm && onSaveMetadata && (
+          <MetadataForm
+            category={action.category}
+            logId={actionResult.log_id}
+            onSave={onSaveMetadata}
+            onSkip={onSkipMetadata}
+          />
         )}
 
         {/* Timestamp */}

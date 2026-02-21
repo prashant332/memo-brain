@@ -36,10 +36,10 @@ ALWAYS end your response with this exact format (raw JSON after the separator):
   "recurrence": "monthly|weekly|yearly|null",
   "due_date": "ISO date string or null",
   "period": "YYYY-MM or null",
+  "advance_months": integer or null,
   "metadata": {"key": "value"} or null,
   "query_type": "current_status|upcoming|history|overdue|null",
-  "ask_followup": true|false,
-  "followup_suggestions": ["suggestion1", "suggestion2"] or null
+  "ask_followup": true|false
 }
 
 METADATA - All additional data goes here (including notes):
@@ -49,17 +49,14 @@ METADATA - All additional data goes here (including notes):
 - note: {"tags": ["tag1"], "content": "string"}
 
 IMPORTANT BEHAVIOR:
-- After logging something, set "ask_followup": true with RELEVANT suggestions based on category
-  - For bills: suggest amount, payment method
-  - For tasks: suggest priority, location, duration
-  - For events: suggest location, time, participants
-- Use "followup_suggestions" to provide 2-3 relevant options like ["Add amount", "Add payment method", "Done"]
-- If user provides details, extract into "metadata" object with intent "add_details"
+- After logging something, set "ask_followup": true so the UI shows an inline form for additional details
+- If user provides details in their message, extract into "metadata" object
 - If user says "done", "no thanks", "that's all", use intent "confirm_done"
 - For bills, detect monthly recurring bills
 - For tasks, extract due dates from natural language
 - When answering queries, USE THE METADATA from context (amounts, locations, etc.) to give accurate answers
-- Keep responses natural and concise (1-2 sentences)`
+- Keep responses natural and concise (1-2 sentences)
+- For advance payments (e.g. "paid 3 months advance", "paid for next 2 months"), set advance_months to the number of months covered (e.g. 3). Leave null for single-month payments.`
 
 // Build system prompt with context
 function buildSystemPrompt(userContext) {
