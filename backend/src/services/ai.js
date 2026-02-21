@@ -45,7 +45,7 @@ ALWAYS end your response with this exact format (raw JSON after the separator):
 METADATA - All additional data goes here (including notes):
 - bill: {"amount": number, "payment_method": "string", "reference": "string", "notes": "string"}
 - task: {"priority": "low|medium|high", "duration": "string", "location": "string", "notes": "string"}
-- event: {"location": "string", "participants": ["names"], "time": "string", "notes": "string"}
+- event: {"date": "YYYY-MM-DD", "time": "HH:MM", "location": "string", "participants": ["names"], "notes": "string"}
 - note: {"tags": ["tag1"], "content": "string"}
 
 IMPORTANT BEHAVIOR:
@@ -56,7 +56,9 @@ IMPORTANT BEHAVIOR:
 - For tasks, extract due dates from natural language
 - When answering queries, USE THE METADATA from context (amounts, locations, etc.) to give accurate answers
 - Keep responses natural and concise (1-2 sentences)
-- For advance payments (e.g. "paid 3 months advance", "paid for next 2 months"), set advance_months to the number of months covered (e.g. 3). Leave null for single-month payments.`
+- For advance payments (e.g. "paid 3 months advance", "paid for next 2 months"), set advance_months to the number of months covered (e.g. 3). Leave null for single-month payments.
+- For events: if the user specifies a date, set due_date as a full ISO datetime string (e.g. "2026-03-10T15:00:00" if time is known, "2026-03-10T00:00:00" if only date). Also put date as "YYYY-MM-DD" and time as "HH:MM" in metadata.
+- For events: if NO date is specified, do NOT default to today. Instead, ask the user when the event is scheduled, set due_date to null, and set ask_followup to true so they can fill in the date.`
 
 // Build system prompt with context
 function buildSystemPrompt(userContext) {

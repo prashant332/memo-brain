@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { format, isToday, isTomorrow, parseISO } from 'date-fns'
+import { format, isToday, isTomorrow, parseISO, isSameYear } from 'date-fns'
 import api from '../lib/api'
 
 export default function DashboardStrip() {
@@ -38,6 +38,16 @@ export default function DashboardStrip() {
     return format(date, 'EEE') // Mon, Tue, etc.
   }
 
+  const formatEventDate = (dateStr) => {
+    if (!dateStr) return ''
+    const date = parseISO(dateStr)
+    const hasTime = dateStr.includes('T') && !dateStr.endsWith('T00:00:00')
+    if (isToday(date)) return hasTime ? `Today, ${format(date, 'h:mm a')}` : 'Today'
+    if (isTomorrow(date)) return hasTime ? `Tomorrow, ${format(date, 'h:mm a')}` : 'Tomorrow'
+    const dateFormat = isSameYear(date, new Date()) ? 'MMM d' : 'MMM d, yyyy'
+    return hasTime ? `${format(date, dateFormat)}, ${format(date, 'h:mm a')}` : format(date, dateFormat)
+  }
+
   if (loading) {
     return (
       <div className="px-4 py-3 border-b border-slate-800">
@@ -58,7 +68,7 @@ export default function DashboardStrip() {
     )
   }
 
-  const hasContent = data?.bills?.length > 0 || data?.upcoming?.length > 0 || data?.overdue?.length > 0
+  const hasContent = data?.bills?.length > 0 || data?.events?.length > 0 || data?.upcoming?.length > 0 || data?.overdue?.length > 0
 
   if (!hasContent) {
     return null // Don't show strip if no data
@@ -126,6 +136,38 @@ export default function DashboardStrip() {
                 </p>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Events Section */}
+      {data.events?.length > 0 && (
+        <div className="px-4 py-2 border-b border-slate-800/50">
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">
+            Events
+          </p>
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+            {data.events.map((event) => {
+              const participants = event.metadata?.participants
+              return (
+                <div
+                  key={event.log_id}
+                  className="flex-shrink-0 px-3 py-2 bg-violet-500/10 border border-violet-500/20 rounded-lg"
+                >
+                  <p className="text-sm font-medium text-violet-300 truncate max-w-[160px]">
+                    {event.title}
+                  </p>
+                  <p className="text-xs text-violet-400/70 mt-0.5">
+                    {formatEventDate(event.due_date)}
+                  </p>
+                  {participants?.length > 0 && (
+                    <p className="text-xs text-violet-400/50 truncate max-w-[160px]">
+                      {Array.isArray(participants) ? participants.join(', ') : participants}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

@@ -44,10 +44,25 @@ router.get('/', async (req, res) => {
 router.get('/dashboard', async (req, res) => {
   try {
     const currentPeriod = new Date().toISOString().slice(0, 7) // YYYY-MM
+    const now = new Date()
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const nextWeek = new Date(today)
     nextWeek.setDate(nextWeek.getDate() + 7)
+
+    // Auto-complete past events so they don't linger as overdue
+    await pool.query(
+      `UPDATE activity_logs l
+       SET status = 'done', completed_at = NOW()
+       FROM activities a
+       WHERE l.activity_id = a.id
+         AND l.user_id = $1
+         AND a.category = 'event'
+         AND l.status = 'pending'
+         AND l.due_date IS NOT NULL
+         AND l.due_date < $2`,
+      [req.user.id, now.toISOString()]
+    )
 
     // Monthly bills with current period status
     const billsResult = await pool.query(
@@ -70,7 +85,27 @@ router.get('/dashboard', async (req, res) => {
       [req.user.id, currentPeriod]
     )
 
-    // Upcoming tasks (due in next 7 days)
+    // Upcoming events (all future events with a due_date set)
+    const eventsResult = await pool.query(
+      `SELECT
+        l.id as log_id,
+        a.id as activity_id,
+        a.title,
+        l.due_date,
+        l.metadata
+      FROM activity_logs l
+      JOIN activities a ON l.activity_id = a.id
+      WHERE l.user_id = $1
+        AND a.category = 'event'
+        AND l.status = 'pending'
+        AND l.due_date IS NOT NULL
+        AND l.due_date >= $2
+      ORDER BY l.due_date ASC
+      LIMIT 10`,
+      [req.user.id, now.toISOString()]
+    )
+
+    // Upcoming tasks (due in next 7 days, excluding events)
     const upcomingResult = await pool.query(
       `SELECT
         l.id as log_id,
@@ -83,6 +118,7 @@ router.get('/dashboard', async (req, res) => {
       FROM activity_logs l
       JOIN activities a ON l.activity_id = a.id
       WHERE l.user_id = $1
+        AND a.category != 'event'
         AND l.status = 'pending'
         AND l.due_date >= $2
         AND l.due_date < $3
@@ -90,7 +126,7 @@ router.get('/dashboard', async (req, res) => {
       [req.user.id, today.toISOString(), nextWeek.toISOString()]
     )
 
-    // Overdue tasks
+    // Overdue tasks (excluding events)
     const overdueResult = await pool.query(
       `SELECT
         l.id as log_id,
@@ -103,6 +139,7 @@ router.get('/dashboard', async (req, res) => {
       FROM activity_logs l
       JOIN activities a ON l.activity_id = a.id
       WHERE l.user_id = $1
+        AND a.category != 'event'
         AND l.status = 'pending'
         AND l.due_date < $2
       ORDER BY l.due_date ASC`,
@@ -112,6 +149,7 @@ router.get('/dashboard', async (req, res) => {
     res.json({
       currentPeriod,
       bills: billsResult.rows,
+      events: eventsResult.rows,
       upcoming: upcomingResult.rows,
       overdue: overdueResult.rows
     })
@@ -230,6 +268,15 @@ router.patch('/log/:logId', async (req, res) => {
       updates.push(`metadata = COALESCE(metadata, '{}'::jsonb) || $${paramIndex}::jsonb`)
       values.push(JSON.stringify(metadata))
       paramIndex++
+
+      // If date is provided (event form), combine with time and update due_date
+      if (metadata.date) {
+        const timeStr = metadata.time || '00:00'
+        const dueDateISO = `${metadata.date}T${timeStr}:00`
+        updates.push(`due_date = $${paramIndex}`)
+        values.push(dueDateISO)
+        paramIndex++
+      }
     }
 
     if (updates.length === 0) {

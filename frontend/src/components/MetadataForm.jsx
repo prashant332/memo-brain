@@ -12,8 +12,9 @@ const categoryFields = {
     { key: 'duration', label: 'Duration', type: 'text', placeholder: 'e.g., 2 hours' }
   ],
   event: [
+    { key: 'date', label: 'Date', type: 'date', placeholder: '', required: true },
+    { key: 'time', label: 'Time', type: 'time', placeholder: '' },
     { key: 'location', label: 'Location', type: 'text', placeholder: 'Optional' },
-    { key: 'time', label: 'Time', type: 'text', placeholder: 'e.g., 3:00 PM' },
     { key: 'participants', label: 'Participants', type: 'text', placeholder: 'e.g., John, Jane' }
   ],
   note: [
@@ -25,6 +26,7 @@ export default function MetadataForm({ category, logId, onSave, onSkip }) {
   const fields = categoryFields[category] || categoryFields.task
   const [values, setValues] = useState({})
   const [saving, setSaving] = useState(false)
+  const isEvent = category === 'event'
 
   const handleChange = (key, value) => {
     setValues(prev => ({ ...prev, [key]: value }))
@@ -64,13 +66,15 @@ export default function MetadataForm({ category, logId, onSave, onSkip }) {
 
   return (
     <div className="mt-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
-      <p className="text-xs text-slate-400 mb-3">Add details (optional)</p>
+      <p className="text-xs text-slate-400 mb-3">
+        {isEvent ? 'When is this event?' : 'Add details (optional)'}
+      </p>
 
       <div className="space-y-2">
         {fields.map(field => (
           <div key={field.key} className="flex items-center gap-2">
-            <label className="text-xs text-slate-400 w-24 flex-shrink-0">
-              {field.label}
+            <label className={`text-xs w-24 flex-shrink-0 ${field.required ? 'text-slate-200 font-medium' : 'text-slate-400'}`}>
+              {field.label}{field.required && <span className="text-error-400 ml-0.5">*</span>}
             </label>
             {field.type === 'select' ? (
               <select
@@ -89,7 +93,11 @@ export default function MetadataForm({ category, logId, onSave, onSkip }) {
                 value={values[field.key] || ''}
                 onChange={e => handleChange(field.key, e.target.value)}
                 placeholder={field.placeholder}
-                className="flex-1 bg-slate-700 text-slate-200 text-sm rounded px-2 py-1.5 border border-slate-600 focus:border-primary-500 focus:outline-none placeholder:text-slate-500"
+                className={`flex-1 bg-slate-700 text-slate-200 text-sm rounded px-2 py-1.5 border focus:outline-none placeholder:text-slate-500 ${
+                  field.required && !values[field.key]
+                    ? 'border-warning-500/50 focus:border-warning-500'
+                    : 'border-slate-600 focus:border-primary-500'
+                }`}
               />
             )}
           </div>
