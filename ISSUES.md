@@ -36,23 +36,21 @@
 
 ---
 
-### DEF-001 — [Short title]
+### DEF-001 — Asking to enter the amount manually even though the initial log entry contains the amount data
 
 | Field | Value |
 |-------|-------|
 | **Date** | YYYY-MM-DD |
 | **Reported by** | Name |
-| **Severity** | Critical / High / Medium / Low |
+| **Severity** |  High  |
 | **Status** | Open |
-| **Phase** | Phase 1 / Phase 2 |
-| **Area** | Chat / Dashboard Strip / Activities Page / Analytics / Notifications / Brain Sharing / Settings / Auth |
-| **Feature** | e.g. Recurring Auto-creation |
+| **Phase** | Phase 2 |
+| **Area** | Chat  |
+| **Feature** | Log interpretation and entry |
 
 **Steps to Reproduce**
 
-1. Step one
-2. Step two
-3. Step three
+1. While entering the chat like "Thank you for using LIC's Online facility for Renewal Payment. We have received an amount of Rs.23,743.00 vide Transaction ID 42224331 dated 20/02/2026." it is not captured the amount and asked me to enter the amount manually. the additional data should be asked only for the missing details.
 
 **Expected Behaviour**
 

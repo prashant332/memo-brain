@@ -83,6 +83,7 @@ export default function MessageBubble({ message, onQuickReply, onSaveMetadata, o
           <MetadataForm
             category={action.category}
             logId={actionResult.log_id}
+            initialValues={action.metadata || {}}
             onSave={onSaveMetadata}
             onSkip={onSkipMetadata}
           />

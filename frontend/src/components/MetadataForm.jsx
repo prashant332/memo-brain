@@ -22,9 +22,22 @@ const categoryFields = {
   ]
 }
 
-export default function MetadataForm({ category, logId, onSave, onSkip }) {
+export default function MetadataForm({ category, logId, onSave, onSkip, initialValues }) {
   const fields = categoryFields[category] || categoryFields.task
-  const [values, setValues] = useState({})
+  // Pre-populate with any metadata already extracted by the AI
+  const [values, setValues] = useState(() => {
+    const init = {}
+    if (initialValues) {
+      fields.forEach(f => {
+        const v = initialValues[f.key]
+        if (v !== undefined && v !== null) {
+          // Arrays (participants, tags) → join back to string for the text input
+          init[f.key] = Array.isArray(v) ? v.join(', ') : String(v)
+        }
+      })
+    }
+    return init
+  })
   const [saving, setSaving] = useState(false)
   const isEvent = category === 'event'
 
