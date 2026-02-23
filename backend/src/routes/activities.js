@@ -206,6 +206,7 @@ router.get('/dashboard', async (req, res) => {
       JOIN activities a ON l.activity_id = a.id
       WHERE l.user_id = $1
         AND a.category = 'event'
+        AND a.is_active = true
         AND l.status = 'pending'
         AND l.due_date IS NOT NULL
         AND l.due_date >= $2

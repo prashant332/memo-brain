@@ -41,14 +41,23 @@ export default function DashboardStrip({ ownerUserId }) {
     return format(date, 'EEE') // Mon, Tue, etc.
   }
 
-  const formatEventDate = (dateStr) => {
+  const formatTime12h = (timeStr) => {
+    if (!timeStr) return ''
+    const [h, m] = timeStr.split(':').map(Number)
+    const ampm = h >= 12 ? 'PM' : 'AM'
+    const h12 = h % 12 || 12
+    return `${h12}:${String(m).padStart(2, '0')} ${ampm}`
+  }
+
+  const formatEventDate = (dateStr, metadataTime) => {
     if (!dateStr) return ''
     const date = parseISO(dateStr)
-    const hasTime = dateStr.includes('T') && !dateStr.endsWith('T00:00:00')
-    if (isToday(date)) return hasTime ? `Today, ${format(date, 'h:mm a')}` : 'Today'
-    if (isTomorrow(date)) return hasTime ? `Tomorrow, ${format(date, 'h:mm a')}` : 'Tomorrow'
+    const timeDisplay = metadataTime ? formatTime12h(metadataTime) : ''
+    const hasTime = !!timeDisplay
+    if (isToday(date)) return hasTime ? `Today, ${timeDisplay}` : 'Today'
+    if (isTomorrow(date)) return hasTime ? `Tomorrow, ${timeDisplay}` : 'Tomorrow'
     const dateFormat = isSameYear(date, new Date()) ? 'MMM d' : 'MMM d, yyyy'
-    return hasTime ? `${format(date, dateFormat)}, ${format(date, 'h:mm a')}` : format(date, dateFormat)
+    return hasTime ? `${format(date, dateFormat)}, ${timeDisplay}` : format(date, dateFormat)
   }
 
   if (loading) {
@@ -168,7 +177,7 @@ export default function DashboardStrip({ ownerUserId }) {
                     {event.title}
                   </p>
                   <p className="text-xs text-violet-400/70 mt-0.5">
-                    {formatEventDate(event.due_date)}
+                    {formatEventDate(event.due_date, event.metadata?.time)}
                   </p>
                   {participants?.length > 0 && (
                     <p className="text-xs text-violet-400/50 truncate max-w-[160px]">

@@ -218,6 +218,7 @@ router.get('/:ownerUserId/dashboard', async (req, res, next) => {
          FROM activity_logs l
          JOIN activities a ON l.activity_id = a.id
          WHERE l.user_id = $1 AND a.category = 'event'
+           AND a.is_active = true
            AND l.status = 'pending' AND l.due_date >= $2
          ORDER BY l.due_date ASC LIMIT 10`,
         [ownerId, now.toISOString()]

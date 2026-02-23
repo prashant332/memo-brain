@@ -132,7 +132,8 @@ export default function ChatPage() {
 
       // Send to API
       const { data } = await api.post(`/chat/sessions/${currentSessionId}/message`, {
-        content: messageText
+        content: messageText,
+        timezoneOffset: new Date().getTimezoneOffset()
       })
 
       // Check if session was auto-closed (user confirmed done)

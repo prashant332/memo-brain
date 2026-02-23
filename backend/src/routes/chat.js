@@ -84,7 +84,7 @@ router.get('/sessions/:sessionId/messages', async (req, res) => {
 router.post('/sessions/:sessionId/message', async (req, res) => {
   try {
     const { sessionId } = req.params
-    const { content } = req.body
+    const { content, timezoneOffset } = req.body
 
     if (!content?.trim()) {
       return res.status(400).json({ error: 'Message content is required' })
@@ -155,7 +155,7 @@ router.post('/sessions/:sessionId/message', async (req, res) => {
     let actionResult = null
     const loggingIntents = ['log_done', 'log_pending', 'log_event', 'add_details']
     if (action && action.intent && loggingIntents.includes(action.intent)) {
-      actionResult = await executeAction(req.user.id, action, sessionId)
+      actionResult = await executeAction(req.user.id, action, sessionId, timezoneOffset)
     }
 
     // Update session title if still default
@@ -286,10 +286,30 @@ function getAdvancePeriods(startPeriod, months) {
   return periods
 }
 
+// Convert a naive local datetime string to UTC ISO string using the browser's timezone offset.
+// timezoneOffset is new Date().getTimezoneOffset() from the browser
+// (negative for UTC+, e.g. IST = UTC+5:30 → offset = -330).
+function localDateToUTC(naiveDateStr, timezoneOffset) {
+  if (
+    !naiveDateStr ||
+    typeof timezoneOffset !== 'number' ||
+    naiveDateStr.endsWith('Z') ||
+    /[+-]\d{2}:\d{2}$/.test(naiveDateStr)
+  ) {
+    return naiveDateStr
+  }
+  // Treat the naive string as UTC momentarily just for parsing, then shift by the offset.
+  // UTC = local_time - utcOffsetMinutes = local_time + browserTimezoneOffset_minutes
+  const localMs = new Date(naiveDateStr + 'Z').getTime()
+  const utcMs = localMs + timezoneOffset * 60000
+  return new Date(utcMs).toISOString()
+}
+
 // Execute action from AI response
-async function executeAction(userId, action, sessionId) {
+async function executeAction(userId, action, sessionId, timezoneOffset) {
   try {
-    const { intent, activity_title, category, recurrence, due_date, period, notes, metadata, advance_months } = action
+    const { intent, activity_title, category, recurrence, period, notes, metadata, advance_months } = action
+    const due_date = localDateToUTC(action.due_date, timezoneOffset)
 
     // Handle add_details - update existing log in this session
     if (intent === 'add_details') {

@@ -118,7 +118,59 @@ The layout used a hardcoded `flex` row with `w-80` for the list panel and `flex-
 
 ---
 
-### DEF-003 — _(short title)_
+### DEF-003 — The event time interpreted wrongly. My 11am event got recorded as 4:30pm and it stays on dashboard even after marking deactivate as it was wrong.
+
+| Field | Value |
+|-------|-------|
+| **Date** | 2026-02-23 |
+| **Reported by** | Prashant |
+| **Severity** | Critical |
+| **Status** | Fixed |
+| **Phase** | Phase 2 |
+| **Area** | Chat \| Dashboard |
+| **Feature** | Event time parsing and Dashboard Strip |
+
+**Steps to Reproduce**
+
+1. Tell the AI about an event with a specific time, e.g. "I have a meeting at 11am tomorrow".
+2. Open the Dashboard Strip — the event shows 4:30 PM instead of 11:00 AM (visible to users in IST, UTC+5:30).
+3. Go to Activities, deactivate/delete the wrong event log.
+4. The event still appears on the Dashboard Strip.
+
+**Expected Behaviour**
+
+- Event time displayed in the Dashboard matches the local time the user stated.
+- After deactivating an activity, its pending logs must not appear on the Dashboard.
+
+**Actual Behaviour**
+
+- AI extracts "11:00" correctly but the backend stored it as 11:00 UTC. The frontend displays UTC in local time, so IST users see 4:30 PM (11:00 UTC + 5:30h).
+- Dashboard events query joined `activity_logs` with `activities` but never checked `a.is_active`, so deactivated activities' logs still appeared.
+
+**Environment**
+
+- Browser: Chrome / Firefox / Safari
+- Device: Desktop / Android (PWA)
+
+**Root Cause (filled in by developer)**
+
+Two independent bugs:
+
+1. **Timezone mismatch**: The AI outputs naive datetime strings (e.g. `"2026-03-10T11:00:00"`) with no timezone info. The backend stored them verbatim into a `TIMESTAMPTZ` column, causing PostgreSQL to interpret the value as UTC. When the frontend's `parseISO()` returned this UTC value and `date-fns format()` converted it to local time, IST users saw the time shifted by +5:30h. Additionally, the `hasTime` check in `formatEventDate` relied on the raw DB string ending with `T00:00:00`, which is never true for PostgreSQL TIMESTAMPTZ output (it always includes `.000Z`).
+
+2. **Missing `is_active` filter**: The dashboard events query (`GET /api/activities/dashboard`) filtered on `l.status = 'pending'` but did not check `a.is_active = true`. Deactivating an activity only sets `activities.is_active = false`; it leaves the linked logs untouched, so they continued to appear.
+
+**Fix Applied**
+
+- `frontend/src/pages/ChatPage.jsx` — Sends `timezoneOffset: new Date().getTimezoneOffset()` with every chat message so the backend knows the user's UTC offset.
+- `backend/src/routes/chat.js` — Added `localDateToUTC()` helper that converts a naive AI-output datetime to a proper UTC ISO string using the browser's timezone offset (e.g. IST: offset = -330 → 11:00 local → 05:30 UTC). Applied before inserting `due_date` into the database.
+- `frontend/src/components/DashboardStrip.jsx` — `formatEventDate` now accepts `metadataTime` (the AI-extracted `"HH:MM"` string) and formats it directly into 12-hour display, replacing the fragile `hasTime` check on the ISO string. Call site updated to pass `event.metadata?.time`.
+- `backend/src/routes/activities.js` — Added `AND a.is_active = true` to the upcoming-events dashboard query.
+- `backend/src/routes/shares.js` — Same `AND a.is_active = true` fix applied to the shared-brain dashboard events query.
+
+---
+
+### DEF-004 — _(short description)_
 
 | Field | Value |
 |-------|-------|
@@ -212,6 +264,7 @@ Please propose and updated based on the rquirement
 |----|------|-------|-----------|-------------|
 | DEF-001 | Defect | Asking to enter amount manually even though initial log contains it | Fixed | 2026-02-21 |
 | DEF-002 | Defect | Activities Page not mobile friendly — detail panel inaccessible on mobile | Fixed | 2026-02-21 |
+| DEF-003 | Defect | Event time misinterpreted (timezone); deactivated event stays on dashboard | Fixed | 2026-02-23 |
 
 ---
 
@@ -221,9 +274,10 @@ Please propose and updated based on the rquirement
 |----|------|-------|-------------------|--------|------|
 | DEF-001 | Defect | Asking to enter amount manually even though initial log contains it | High | Fixed | Chat |
 | DEF-002 | Defect | Activities Page not mobile friendly — detail panel inaccessible on mobile | High | Fixed | Activities |
-| DEF-003 | Defect | _(next defect)_ | — | Open | — |
+| DEF-003 | Defect | Event time misinterpreted (timezone); deactivated event stays on dashboard | Critical | Fixed | Chat, Dashboard |
+| DEF-004 | Defect | _(next defect)_ | — | Open | — |
 | ENH-001 | Enhancement | Creating log using voice along with type | Should Have | In Progress | Chat |
 
 ---
 
-*Last updated: 2026-02-21*
+*Last updated: 2026-02-23*
