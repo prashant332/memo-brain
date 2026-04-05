@@ -196,10 +196,12 @@ router.post('/sessions/:sessionId/message', async (req, res) => {
 
 // Execute a DB query based on AI-detected query intent
 async function executeQuery(userId, action) {
-  const { query_type, activity_title } = action
+  const { query_type, activity_title, target_period } = action
 
   if (query_type === 'current_status') {
-    const period = new Date().toISOString().slice(0, 7)
+    // Use target_period if the user asked about a specific past month's bill status,
+    // otherwise default to the current period.
+    const period = target_period || new Date().toISOString().slice(0, 7)
     const result = await pool.query(
       `SELECT a.title, a.category, a.recurrence,
               COALESCE(
@@ -251,23 +253,44 @@ async function executeQuery(userId, action) {
     return { query_type, upcoming: result.rows }
   }
 
-  // Default: history query, optionally filtered by activity title
+  // Default: history query, filtered by activity title and/or period(s)
+  const { months_back } = action
   const params = [userId]
-  let titleFilter = ''
+  const filters = []
+
   if (activity_title) {
     params.push(`%${activity_title}%`)
-    titleFilter = `AND LOWER(a.title) ILIKE LOWER($${params.length})`
+    filters.push(`LOWER(a.title) ILIKE LOWER($${params.length})`)
   }
+
+  if (target_period) {
+    // Single specific month
+    params.push(target_period)
+    filters.push(`l.period = $${params.length}`)
+  } else if (months_back && months_back > 0) {
+    // Multi-month range: build the list of YYYY-MM strings for the past N months
+    const periods = []
+    const now = new Date()
+    for (let i = 0; i < months_back; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      periods.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    }
+    params.push(periods)
+    filters.push(`l.period = ANY($${params.length})`)
+  }
+
+  const whereClause = filters.length > 0 ? `AND ${filters.join(' AND ')}` : ''
+  const limit = (target_period || months_back || activity_title) ? 200 : 20
 
   const result = await pool.query(
     `SELECT a.title, a.category, l.status, l.period, l.metadata, l.completed_at, l.due_date, l.created_at
      FROM activity_logs l
      JOIN activities a ON l.activity_id = a.id
-     WHERE l.user_id = $1 ${titleFilter}
-     ORDER BY l.created_at DESC LIMIT 12`,
+     WHERE l.user_id = $1 ${whereClause}
+     ORDER BY l.period DESC, l.created_at DESC LIMIT ${limit}`,
     params
   )
-  return { query_type: 'history', activity_title, logs: result.rows }
+  return { query_type: 'history', activity_title, target_period, months_back, logs: result.rows }
 }
 
 // Store session context for follow-up details
